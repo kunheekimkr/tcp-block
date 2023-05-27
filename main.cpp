@@ -1,15 +1,23 @@
 #include <iostream>
 #include <string>
-#include "mac.h"
 #include <pcap.h>
 
 using namespace std;
+
+const string redirect_data ="HTTP/1.1 302 Redirect\r\nLocation: http://warning.or.kr\r\n";
 
 void usage() {
 	cout << "syntax : tcp-block <interface> <pattern>\n";
 	cout << "sample : tcp-block wlan0 \"Host: test.gilgil.net\"";
 }
 
+bool search_pattern(const u_char* packet, string pattern) {
+	// Search pattern in packet
+}
+
+void block_packet (pcap_t* handle, const u_char* packet) {
+	// Block packet & Redirect
+}
 
 int main(int argc, char* argv[]){
 	if (argc != 3) {
@@ -36,7 +44,10 @@ int main(int argc, char* argv[]){
 			break;
 		}
 
-		// Search if pattern is in packet
+		if (search_pattern(packet, pattern)) {
+			// Block packet
+			block_packet(handle ,packet);
+		}
 	}
     pcap_close(handle);
 	return 0;
