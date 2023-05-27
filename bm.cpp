@@ -169,7 +169,7 @@ uint8_t *BoyerMoore(const uint8_t *x, uint16_t m, const uint8_t *y, uint32_t n, 
 		} else {
 			m1 = bmGs[i];
 			m2 = bmBc[y[i + j]] - m + 1 + i;
-			printf("index=%d BC=%d GS=%d\n", j, m2, m1);
+			//printf("index=%d BC=%d GS=%d\n", j, m2, m1);
 			j += m1 > m2 ? m1: m2;
 		}
 	}
