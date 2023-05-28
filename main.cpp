@@ -60,9 +60,29 @@ bool search_pattern(const u_char *packet, BmCtx *ctx)
 	}
 }
 
-uint16_t ip_checksum(TcpPacketHdr *packet)
+uint16_t ip_checksum(IPv4Hdr ipHeader)
 {
-	return 0;
+	// set checksum field to zero
+	ipHeader.ip_sum = 0;
+
+	// split ip header into 16bit chunks
+	uint16_t *ipHeader16 = (uint16_t *)&ipHeader;
+	uint32_t sum = 0;
+
+	// add all 16bit chunks
+	for (int i = 0; i < 10; i++)
+	{
+		sum += ntohs(ipHeader16[i]);
+	}
+
+	// add carry
+	while (sum >> 16)
+	{
+		sum = (sum & 0xFFFF) + (sum >> 16);
+	}
+
+	// return checksum
+	return htons((uint16_t)~sum);
 }
 
 uint32_t tcp_checksum(TcpPacketHdr *packet)
@@ -91,7 +111,7 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	packet_forward->tcp.th_flags = TH_RST | TH_ACK;
 
 	// Update Checksums
-	packet_forward->ip.ip_sum = ip_checksum(packet_forward);
+	packet_forward->ip.ip_sum = ip_checksum(packet_forward->ip);
 	packet_forward->tcp.th_sum = tcp_checksum(packet_forward);
 	send_packet(handle, packet_forward, sizeof(TcpPacketHdr));
 
@@ -119,7 +139,7 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	memcpy((char *)packet_backward + sizeof(TcpPacketHdr), redirect_data.c_str(), redirect_data.length());
 
 	// Update Checksums
-	packet_backward->ip.ip_sum = ip_checksum(packet_backward);
+	packet_backward->ip.ip_sum = ip_checksum(packet_backward->ip);
 	packet_backward->tcp.th_sum = tcp_checksum(packet_backward);
 
 	send_packet(handle, packet_backward, sizeof(TcpPacketHdr) + redirect_data.length());
