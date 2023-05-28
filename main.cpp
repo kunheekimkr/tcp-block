@@ -125,9 +125,6 @@ uint16_t tcp_checksum(TcpPacketHdr *packet, int size)
 	uint16_t *tcp16 = (uint16_t *)&packet->tcp;
 	for (int i = 0; i < size / 2; i++)
 	{
-		// Debug : print tcp16[i]
-		printf("%04x\n", ntohs(tcp16[i]));
-
 		sum += ntohs(tcp16[i]);
 
 		// 4-1. add carry
@@ -137,13 +134,12 @@ uint16_t tcp_checksum(TcpPacketHdr *packet, int size)
 		}
 	}
 
-	// handle where last 16bit chunk is odd
+	// 4-2. handle where last 16bit chunk is odd
 	if (size % 2 == 1)
 	{
-		printf("%04x\n", ntohs(tcp16[size / 2] << 8));
 		sum += ntohs(tcp16[size / 2]);
 	}
-	printf("\n\n\n\n");
+
 	// 5. calculate checksum
 	uint16_t checksum = (uint16_t)~sum;
 	return ntohs(checksum);
@@ -167,6 +163,7 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 
 	packet_forward->ip.ip_len = htons(sizeof(IPv4Hdr) + sizeof(TcpHdr));
 	packet_forward->tcp.th_seq += htons(size - sizeof(TcpPacketHdr));
+	packet_forward->tcp.th_off = 5;
 	packet_forward->tcp.th_flags = TH_RST | TH_ACK;
 
 	// Update Checksums
@@ -190,8 +187,12 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	uint16_t tmp_port = packet_backward->tcp.th_sport;
 	packet_backward->tcp.th_sport = packet_backward->tcp.th_dport;
 	packet_backward->tcp.th_dport = tmp_port;
-	packet_backward->tcp.th_seq = packet_forward->tcp.th_ack;
-	packet_backward->tcp.th_ack = packet_forward->tcp.th_seq;
+
+	uint32_t tmp_seq = packet_backward->tcp.th_seq;
+	packet_backward->tcp.th_seq = packet_backward->tcp.th_ack;
+	packet_backward->tcp.th_ack = tmp_seq;
+
+	packet_forward->tcp.th_off = 5;
 	packet_backward->tcp.th_flags = TH_FIN | TH_ACK;
 
 	// Add redirect data
