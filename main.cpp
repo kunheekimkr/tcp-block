@@ -93,8 +93,8 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	uint16_t tmp_port = packet_backward->tcp.th_sport;
 	packet_backward->tcp.th_sport = packet_backward->tcp.th_dport;
 	packet_backward->tcp.th_dport = tmp_port;
-	packet_backward->tcp.th_seq = packet_backward->tcp.th_ack;
-	packet_backward->tcp.th_ack += htons(size - sizeof(TcpPacketHdr));
+	packet_backward->tcp.th_seq = packet_forward->tcp.th_ack;
+	packet_backward->tcp.th_ack = packet_forward->tcp.th_seq;
 	packet_backward->tcp.th_flags = TH_FIN | TH_ACK;
 
 	// Add redirect data
