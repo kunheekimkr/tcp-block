@@ -11,12 +11,28 @@ using namespace std;
 const string redirect_data = "HTTP/1.1 302 Redirect\r\nLocation: http://warning.or.kr\r\n";
 string pattern;
 
+#pragma pack(push, 1) // Structure Padding Disable
 typedef struct TcpPacketHdr
 {
 	EthHdr eth;
 	IPv4Hdr ip;
 	TcpHdr tcp;
 } TcpPacketHdr;
+#pragma pack(pop)
+
+// Debug
+void dump_packet(const u_char *packet, int length)
+{
+	for (int i = 0; i < length; i++)
+	{
+		printf("%02x ", packet[i]);
+		if ((i + 1) % 16 == 0)
+		{
+			printf("\n");
+		}
+	}
+	printf("\n");
+}
 
 void usage()
 {
@@ -46,10 +62,12 @@ bool search_pattern(const u_char *packet, BmCtx *ctx)
 
 uint16_t ip_checksum(TcpPacketHdr *packet)
 {
+	return 0;
 }
 
 uint32_t tcp_checksum(TcpPacketHdr *packet)
 {
+	return 0;
 }
 
 void send_packet(pcap_t *handle, TcpPacketHdr *packet, int size)
