@@ -20,6 +20,15 @@ typedef struct TcpPacketHdr
 } TcpPacketHdr;
 #pragma pack(pop)
 
+typedef struct PseudoHdr
+{
+	Ip src_ip;
+	Ip dst_ip;
+	uint8_t reserved;
+	uint8_t protocol;
+	uint16_t tcp_len;
+} PseudoHdr;
+
 // Debug
 void dump_packet(const u_char *packet, int length)
 {
@@ -85,9 +94,56 @@ uint16_t ip_checksum(IPv4Hdr ipHeader)
 	return htons((uint16_t)~sum);
 }
 
-uint32_t tcp_checksum(TcpPacketHdr *packet)
+uint16_t tcp_checksum(TcpPacketHdr *packet, int size)
 {
-	return 0;
+	// 0. set checksum field to zero
+	packet->tcp.th_sum = 0;
+
+	// 1. make pseudo header
+	PseudoHdr pseudoHdr;
+	pseudoHdr.src_ip = packet->ip.ip_src;
+	pseudoHdr.dst_ip = packet->ip.ip_dst;
+	pseudoHdr.reserved = 0;
+	pseudoHdr.protocol = packet->ip.ip_p;
+	pseudoHdr.tcp_len = ntohs(size);
+
+	// Dump pseudo header for debugging
+	printf("pseudoHdr: ");
+	dump_packet((const u_char *)&pseudoHdr, sizeof(PseudoHdr));
+
+	// 2. split pseudo header into 16bit chunks and add all 16bit chunks
+	uint32_t sum = 0;
+	uint16_t *pseudoHdr16 = (uint16_t *)&pseudoHdr;
+	for (int i = 0; i < 6; i++)
+	{
+		sum += ntohs(pseudoHdr16[i]);
+	}
+
+	// 3. add carry
+	while (sum >> 16)
+	{
+		sum = (sum & 0xFFFF) + (sum >> 16);
+	}
+
+	// Print sum for debugging
+	printf("sum: %x\n", sum);
+
+	// 4. split tcp header + data into 16bit chunks and add all 16bit chunks
+	uint16_t *tcp16 = (uint16_t *)&packet->tcp;
+	for (int i = 0; i < size / 2; i++)
+	{
+		sum += ntohs(tcp16[i]);
+
+		// 4-1. add carry
+		while (sum >> 16)
+		{
+			sum = (sum & 0xFFFF) + (sum >> 16);
+		}
+	}
+
+	// 5. calculate checksum
+	uint16_t checksum = (uint16_t)~sum;
+	return ntohs(checksum);
 }
 
 void send_packet(pcap_t *handle, TcpPacketHdr *packet, int size)
@@ -112,7 +168,7 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 
 	// Update Checksums
 	packet_forward->ip.ip_sum = ip_checksum(packet_forward->ip);
-	packet_forward->tcp.th_sum = tcp_checksum(packet_forward);
+	packet_forward->tcp.th_sum = tcp_checksum(packet_forward, sizeof(TcpHdr));
 	send_packet(handle, packet_forward, sizeof(TcpPacketHdr));
 
 	// 2. backward packet (FIN Flag + redirect data)
@@ -137,12 +193,11 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 
 	// Add redirect data
 	memcpy((char *)packet_backward + sizeof(TcpPacketHdr), redirect_data.c_str(), redirect_data.length());
-
 	// Update Checksums
 	packet_backward->ip.ip_sum = ip_checksum(packet_backward->ip);
-	packet_backward->tcp.th_sum = tcp_checksum(packet_backward);
+	packet_backward->tcp.th_sum = tcp_checksum(packet_backward, sizeof(TcpPacketHdr) + redirect_data.length());
 
-	send_packet(handle, packet_backward, sizeof(TcpPacketHdr) + redirect_data.length());
+	send_packet(handle, packet_backward, sizeof(TcpHdr) + redirect_data.length());
 
 	free(packet_forward);
 	free(packet_backward);
