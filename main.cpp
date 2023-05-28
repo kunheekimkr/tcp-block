@@ -125,9 +125,6 @@ uint16_t tcp_checksum(TcpPacketHdr *packet, int size)
 		sum = (sum & 0xFFFF) + (sum >> 16);
 	}
 
-	// Print sum for debugging
-	printf("sum: %x\n", sum);
-
 	// 4. split tcp header + data into 16bit chunks and add all 16bit chunks
 	uint16_t *tcp16 = (uint16_t *)&packet->tcp;
 	for (int i = 0; i < size / 2; i++)
@@ -197,7 +194,7 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	packet_backward->ip.ip_sum = ip_checksum(packet_backward->ip);
 	packet_backward->tcp.th_sum = tcp_checksum(packet_backward, sizeof(TcpPacketHdr) + redirect_data.length());
 
-	send_packet(handle, packet_backward, sizeof(TcpHdr) + redirect_data.length());
+	send_packet(handle, packet_backward, sizeof(TcpPacketHdr) + redirect_data.length());
 
 	free(packet_forward);
 	free(packet_backward);
