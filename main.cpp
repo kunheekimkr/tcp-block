@@ -207,7 +207,55 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	packet_backward->ip.ip_sum = ip_checksum(packet_backward->ip);
 	packet_backward->tcp.th_sum = tcp_checksum(packet_backward, sizeof(TcpHdr) + redirect_data.length());
 
-	send_packet(handle, packet_backward, sizeof(TcpPacketHdr) + redirect_data.length());
+	// Create raw socket
+	int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+	if (sockfd < 0)
+	{
+		std::cerr << "Failed to create socket." << std::endl;
+		return;
+	}
+
+	// Set socket options to enable IP headers inclusion
+	int on = 1;
+	if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0)
+	{
+		std::cerr << "Failed to set socket options." << std::endl;
+		return;
+	}
+
+	// Prepare destination address structure
+	struct sockaddr_in destAddr;
+	destAddr.sin_family = AF_INET;
+	destAddr.sin_port = packet_backward->tcp.th_dport;
+	destAddr.sin_addr.s_addr = packet_backward->ip.ip_dst;
+
+	// Create TCP packet
+	char rawpacket[4096];
+	memset(rawpacket, 0, sizeof(rawpacket));
+
+	// IP header
+	struct IPv4Hdr *ipHeader = (struct IPv4Hdr *)rawpacket;
+	memcpy(ipHeader, &(packet_backward->ip), sizeof(IPv4Hdr));
+
+	// TCP header
+	struct TcpHdr *tcpHeader = (struct TcpHdr *)(rawpacket + sizeof(struct IPv4Hdr));
+	memcpy(tcpHeader, &(packet_backward->tcp), sizeof(TcpHdr));
+
+	// TCP payload (HTTP response)
+	char *payload = rawpacket + sizeof(struct IPv4Hdr) + sizeof(struct TcpHdr);
+	strcpy(payload, "HTTP/1.1 302 Redirect\r\nLocation: http://warning.or.kr\r\n");
+
+	// Send the packet
+	if (sendto(sockfd, rawpacket, ntohs(ipHeader->ip_len), 0, (struct sockaddr *)&destAddr, sizeof(destAddr)) < 0)
+	{
+		std::cerr << "Failed to send packet." << std::endl;
+		return;
+	}
+
+	printf("Redirected To http://warning.or.kr\n");
+
+	// Close socket
+	close(sockfd);
 
 	free(packet_forward);
 	free(packet_backward);
