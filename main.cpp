@@ -1,40 +1,22 @@
 #include <iostream>
 #include <string>
 #include <pcap.h>
-#include "ethhdr.h"
-#include "ipv4hdr.h"
-#include "tcphdr.h"
-#include "bm.h"
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
+#include "bm.h"
+#include "main.h"
 
 using namespace std;
 
 const string redirect_data = "HTTP/1.1 302 Redirect\r\nLocation: http://warning.or.kr\r\n";
 string pattern;
 
-#pragma pack(push, 1) // Structure Padding Disable
-typedef struct TcpPacketHdr
+void usage()
 {
-	EthHdr eth;
-	IPv4Hdr ip;
-	TcpHdr tcp;
-} TcpPacketHdr;
-#pragma pack(pop)
-
-typedef struct PseudoHdr
-{
-	Ip src_ip;
-	Ip dst_ip;
-	uint8_t reserved;
-	uint8_t protocol;
-	uint16_t tcp_len;
-} PseudoHdr;
+	cout << "syntax : tcp-block <interface> <pattern>\n";
+	cout << "sample : tcp-block wlan0 \"Host: test.gilgil.net\"";
+}
 
 // Debug
 void dump_packet(const u_char *packet, int length)
@@ -48,12 +30,6 @@ void dump_packet(const u_char *packet, int length)
 		}
 	}
 	printf("\n");
-}
-
-void usage()
-{
-	cout << "syntax : tcp-block <interface> <pattern>\n";
-	cout << "sample : tcp-block wlan0 \"Host: test.gilgil.net\"";
 }
 
 bool search_pattern(const u_char *packet, BmCtx *ctx)
@@ -152,15 +128,6 @@ uint16_t tcp_checksum(TcpPacketHdr *packet, int size)
 	return ntohs(checksum);
 }
 
-void send_packet(pcap_t *handle, TcpPacketHdr *packet, int size)
-{
-	int res = pcap_sendpacket(handle, reinterpret_cast<const u_char *>(packet), size);
-	if (res != 0)
-	{
-		fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
-	}
-}
-
 void block_packet(pcap_t *handle, const u_char *packet, int size)
 {
 	// 1. forward packet (RST Flag)
@@ -176,7 +143,11 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	// Update Checksums
 	packet_forward->ip.ip_sum = ip_checksum(packet_forward->ip);
 	packet_forward->tcp.th_sum = tcp_checksum(packet_forward, sizeof(TcpHdr));
-	send_packet(handle, packet_forward, sizeof(TcpPacketHdr));
+	int res = pcap_sendpacket(handle, reinterpret_cast<const u_char *>(packet_forward), sizeof(TcpPacketHdr));
+	if (res != 0)
+	{
+		fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(handle));
+	}
 
 	// 2. backward packet (FIN Flag + redirect data)
 	TcpPacketHdr *packet_backward = (TcpPacketHdr *)malloc(sizeof(TcpPacketHdr) + redirect_data.length());
@@ -243,7 +214,7 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 
 	// TCP payload (HTTP response)
 	char *payload = rawpacket + sizeof(struct IPv4Hdr) + sizeof(struct TcpHdr);
-	strcpy(payload, "HTTP/1.1 302 Redirect\r\nLocation: http://warning.or.kr\r\n");
+	strcpy(payload, redirect_data.c_str());
 
 	// Send the packet
 	if (sendto(sockfd, rawpacket, ntohs(ipHeader->ip_len), 0, (struct sockaddr *)&destAddr, sizeof(destAddr)) < 0)
@@ -256,7 +227,6 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 
 	// Close socket
 	close(sockfd);
-
 	free(packet_forward);
 	free(packet_backward);
 }
