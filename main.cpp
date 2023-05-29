@@ -5,6 +5,13 @@
 #include "ipv4hdr.h"
 #include "tcphdr.h"
 #include "bm.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <cstring>
 
 using namespace std;
 
@@ -162,7 +169,7 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	memcpy(packet_forward, packet, sizeof(TcpPacketHdr));
 
 	packet_forward->ip.ip_len = htons(sizeof(IPv4Hdr) + sizeof(TcpHdr));
-	packet_forward->tcp.th_seq += htons(size - sizeof(TcpPacketHdr));
+	// packet_forward->tcp.th_seq += htons(size - sizeof(TcpPacketHdr));
 	packet_forward->tcp.th_off = 5;
 	packet_forward->tcp.th_flags = TH_RST | TH_ACK;
 
@@ -172,10 +179,11 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 	send_packet(handle, packet_forward, sizeof(TcpPacketHdr));
 
 	// 2. backward packet (FIN Flag + redirect data)
-
 	TcpPacketHdr *packet_backward = (TcpPacketHdr *)malloc(sizeof(TcpPacketHdr) + redirect_data.length());
 	memcpy(packet_backward, packet, sizeof(TcpPacketHdr));
 
+	// Calculate data payload lenth of original packet
+	uint16_t data_len = ntohs(packet_backward->ip.ip_len) - sizeof(IPv4Hdr) - packet_backward->tcp.th_off * 4;
 	packet_backward->eth.dmac_ = packet_backward->eth.smac_;
 
 	packet_backward->ip.ip_len = htons(sizeof(IPv4Hdr) + sizeof(TcpHdr) + redirect_data.length());
@@ -190,11 +198,9 @@ void block_packet(pcap_t *handle, const u_char *packet, int size)
 
 	uint32_t tmp_seq = packet_backward->tcp.th_seq;
 	packet_backward->tcp.th_seq = packet_backward->tcp.th_ack;
-	packet_backward->tcp.th_ack = tmp_seq;
-
-	packet_forward->tcp.th_off = 5;
+	packet_backward->tcp.th_ack = tmp_seq + htonl(data_len);
+	packet_backward->tcp.th_off = 5;
 	packet_backward->tcp.th_flags = TH_FIN | TH_ACK;
-
 	// Add redirect data
 	memcpy((char *)packet_backward + sizeof(TcpPacketHdr), redirect_data.c_str(), redirect_data.length());
 	// Update Checksums
@@ -218,7 +224,7 @@ int main(int argc, char *argv[])
 	pattern = argv[2];
 
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t *handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
+	pcap_t *handle = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
 	if (handle == nullptr)
 	{
 		fprintf(stderr, "couldn't open device %s(%s)\n", dev, errbuf);
