@@ -2,7 +2,7 @@ LDLIBS=-lpcap
 
 all: tcp-block
 
-tcp-block: main.o ip.o mac.o ethhdr.o ipv4hdr.o tcphdr.o bm.o
+tcp-block: main.o ip.o mac.o ethhdr.o ipv4hdr.o tcphdr.o bm.o tcp-block.o
 	$(LINK.cc) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 clean:
