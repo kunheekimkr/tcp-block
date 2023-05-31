@@ -1,3 +1,3 @@
 ## Result
 
-![result](./capture.png)
+![result](./capture.png?)
